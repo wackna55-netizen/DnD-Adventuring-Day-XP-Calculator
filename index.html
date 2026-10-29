@@ -1,17 +1,767 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#18252c"><title>D&D Adventuring Day XP Calculator</title><style>
-:root{color-scheme:dark;--bg:#111a20;--panel:#1b2a32;--edge:#39515c;--text:#f0ede5;--muted:#aebfc4;--accent:#d3a75b;--good:#63b9aa;--bad:#e18a81}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#263a41,#111a20 75%);font:16px/1.5 system-ui,sans-serif;color:var(--text)}main{max-width:880px;padding:36px 18px;margin:auto}h1{font-family:Georgia,serif;font-size:clamp(30px,5vw,45px);margin:0 0 8px}h2{margin:0 0 12px;font-size:21px}p{color:var(--muted)}.panel{background:var(--panel);border:1px solid var(--edge);border-radius:18px;padding:22px;margin-top:20px;box-shadow:0 10px 35px #0003}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.field{display:grid;gap:7px}label{font-weight:650}input,select,button{font:inherit}input,select{min-width:0;width:100%;background:#142128;border:1px solid #49616b;border-radius:10px;color:var(--text);padding:11px}input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.metric{background:#142128;border-radius:12px;padding:16px}.metric strong{font-size:clamp(20px,3.5vw,30px);display:block;color:var(--accent)}.metric small{color:var(--muted)}.bar{height:18px;border-radius:10px;overflow:hidden;background:#344b55;margin:12px 0}.fill{height:100%;background:var(--good);width:0%;transition:width .15s}.fill.over{background:var(--bad)}.enc{display:grid;grid-template-columns:1fr minmax(110px,170px) auto;gap:10px;align-items:center;margin:10px 0}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}button{border:1px solid #8c7958;background:var(--accent);color:#1a2023;font-weight:700;border-radius:10px;padding:10px 16px;cursor:pointer}button.secondary{background:transparent;color:var(--text);border-color:#60747b}button.delete{padding:10px 13px;background:#4c3033;border-color:#81545a;color:#fff}button:hover{filter:brightness(1.09)}.note{font-size:14px}.warning{color:var(--bad)}.ok{color:var(--good)}footer{font-size:13px;margin-top:24px;color:var(--muted)}@media(max-width:590px){.grid,.metrics{grid-template-columns:1fr}.enc{grid-template-columns:1fr 110px auto}.panel{padding:16px}}
-</style></head><body><main><header><h1>⚔️ D&D Adventuring Day XP Calculator</h1><p>Plan combat encounters between long rests using a customizable daily XP budget for D&D 2024 (5.5e).</p></header><section class="panel"><h2>Adventuring Party</h2><div class="grid"><div class="field"><label for="level">Character Level</label><input id="level" type="number" min="1" max="20" value="5"></div><div class="field"><label for="players">Number of Characters</label><input id="players" type="number" min="1" max="20" value="4"></div><div class="field"><label for="difficulty">Day Difficulty</label><select id="difficulty"><option value="2">Easy</option><option value="3" selected>Medium</option><option value="4">Hard</option></select></div><div class="field"><label for="rests">Short Rests</label><select id="rests"><option value="0">0 (× 0.80)</option><option value="1">1 (× 0.90)</option><option value="2" selected>2 (× 1.00)</option><option value="3">3 (× 1.10)</option><option value="4">4+ (× 1.15)</option></select></div></div></section><section class="panel"><h2>Daily XP Budget</h2><div class="metrics"><div class="metric"><small>Total Budget</small><strong id="budget">–</strong></div><div class="metric"><small>Spent</small><strong id="spent">–</strong></div><div class="metric"><small>Remaining</small><strong id="remaining">–</strong></div></div><div class="bar" role="progressbar" aria-label="XP Budget Used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress"><div class="fill" id="fill"></div></div><p id="status" aria-live="polite"></p></section><section class="panel"><h2>Combat Encounters</h2><div id="encounters"></div><div class="actions"><button id="add" type="button">+ Add Encounter</button><button class="secondary" id="copy" type="button">Copy Plan</button><button class="secondary" id="reset" type="button">Reset Encounters</button></div></section><footer><strong>Note:</strong> Unofficial homebrew daily XP budgets: Easy = 2×, Medium = 3×, and Hard = 4× the moderate encounter XP budget per character. Short-rest adjustments are estimates. These XP values are for encounter planning, not necessarily experience awarded. A single combat encounter may still be deadly even when the daily budget is not exceeded. Plans are saved locally in your browser.</footer></main><script>
-'use strict';
-const moderate=[75,150,225,375,750,1000,1300,1700,2000,2300,2900,3700,4200,4900,5400,6100,7200,8700,10700,13200];
-const restFactor=[.8,.9,1,1.1,1.15];const $=id=>document.getElementById(id);const fmt=x=>Math.round(x).toLocaleString('en-US')+' XP';
-let encounters=[1500,2100];
-try {const saved=JSON.parse(localStorage.getItem('dndDayPlan')||'null');if(saved&&Array.isArray(saved.encounters)&&saved.encounters.every(x=>Number.isFinite(x)&&x>=0)){encounters=saved.encounters;for(const id of ['level','players','difficulty','rests'])if(saved[id]!==undefined)$(id).value=String(saved[id]);}}catch{}
-function getPlan(){let level=Math.min(20,Math.max(1,Math.floor(Number($('level').value)||1))),players=Math.min(20,Math.max(1,Math.floor(Number($('players').value)||1))),difficulty=Number($('difficulty').value),rests=Number($('rests').value);return {level,players,difficulty,rests,budget:Math.round(moderate[level-1]*players*difficulty*restFactor[rests]/5)*5,spent:encounters.reduce((a,b)=>a+b,0)};}
-function persist(){let p=getPlan();try{localStorage.setItem('dndDayPlan',JSON.stringify({level:p.level,players:p.players,difficulty:p.difficulty,rests:p.rests,encounters}));}catch{}}
-function draw(){let p=getPlan(),remaining=p.budget-p.spent,percent=p.budget?Math.round(100*p.spent/p.budget):0;$('budget').textContent=fmt(p.budget);$('spent').textContent=fmt(p.spent);$('remaining').textContent=fmt(remaining);$('remaining').style.color=remaining<0?'var(--bad)':'var(--accent)';$('fill').style.width=Math.min(100,percent)+'%';$('fill').classList.toggle('over',remaining<0);$('progress').setAttribute('aria-valuenow',String(Math.min(100,percent)));$('status').textContent=`${percent}% of the daily XP budget used. `+(remaining<0?'Warning: The recommended daily XP budget has been exceeded.':percent>=90?'The adventuring day is almost fully planned.':'There is still XP budget available for more encounters.');$('status').className=remaining<0?'warning':percent>=90?'ok':'';persist()}
-function renderEncounters(){const root=$('encounters');root.replaceChildren();encounters.forEach((xp,i)=>{let row=document.createElement('div');row.className='enc';let label=document.createElement('label');label.textContent='Encounter '+(i+1);label.htmlFor='enc-'+i;let input=document.createElement('input');input.id='enc-'+i;input.type='number';input.min='0';input.step='1';input.value=xp;input.setAttribute('aria-label','XP for encounter '+(i+1));input.addEventListener('input',()=>{encounters[i]=Math.max(0,Math.floor(Number(input.value)||0));draw()});let del=document.createElement('button');del.type='button';del.textContent='✕';del.className='delete';del.setAttribute('aria-label','Remove encounter '+(i+1));del.addEventListener('click',()=>{encounters.splice(i,1);renderEncounters();draw()});row.append(label,input,del);root.append(row)});if(!encounters.length){let p=document.createElement('p');p.textContent='No encounters yet. Add a combat encounter to get started.';root.append(p)}}
-for(let id of ['level','players','difficulty','rests'])$(id).addEventListener('input',draw);
-$('add').addEventListener('click',()=>{encounters.push(1000);renderEncounters();draw()});$('reset').addEventListener('click',()=>{encounters=[];renderEncounters();draw()});$('copy').addEventListener('click',async()=>{let p=getPlan(),txt=`D&D Adventuring Day\nLevel: ${p.level} | Characters: ${p.players}\nDay Difficulty: ${$('difficulty').selectedOptions[0].text}\nShort Rests: ${$('rests').selectedOptions[0].text}\nBudget: ${fmt(p.budget)}\n`+encounters.map((x,i)=>`Encounter ${i+1}: ${fmt(x)}`).join('\n')+`\nSpent: ${fmt(p.spent)}\nRemaining: ${fmt(p.budget-p.spent)}`;try{await navigator.clipboard.writeText(txt);$('copy').textContent='✓ Copied';setTimeout(()=>$('copy').textContent='Copy Plan',1800)}catch{window.prompt('Copy your plan:',txt)}});
-renderEncounters();draw();
-</script></body></html>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>D&D Adventuring Day XP Calculator</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --text: #172238;
+  --muted: #64748b;
+  --border: #e2e8f0;
+  --blue: #2563eb;
+  --light-blue: #eff6ff;
+  --red: #dc2626;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Arial, sans-serif;
+  line-height: 1.5;
+}
+.container {
+  max-width: 960px;
+  margin: 48px auto;
+  padding: 0 20px;
+}
+header { margin-bottom: 28px; }
+h1 {
+  font-size: clamp(26px, 4vw, 38px);
+  letter-spacing: -1.2px;
+  margin: 0 0 10px;
+}
+.subtitle { color: var(--muted); margin: 0; }
+h2 { font-size: 19px; margin: 0 0 22px; }
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px;
+  margin-bottom: 20px;
+  box-shadow: 0 3px 16px rgba(20,35,65,.035);
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 26px;
+}
+.field { margin-bottom: 26px; }
+.field:last-child { margin-bottom: 0; }
+label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+input, select, button {
+  font: inherit;
+}
+input[type="number"], input[type="text"], select {
+  width: 100%;
+  padding: 11px 12px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text);
+  outline: none;
+}
+input:focus, select:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px #2563eb18;
+}
+input[type="range"] {
+  width: 100%;
+  margin: 12px 0 0;
+  accent-color: var(--blue);
+  cursor: pointer;
+}
+.slider-wrap { padding: 0 8px; }
+.slider-value-row {
+  position: relative;
+  height: 32px;
+  margin-top: 5px;
+}
+.slider-value {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  color: var(--blue);
+  background: var(--light-blue);
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.rest-note {
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 6px;
+}
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  padding: 4px;
+  background: var(--bg);
+  border-radius: 10px;
+  gap: 4px;
+}
+.segmented button {
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  padding: 11px 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.segmented button.active {
+  background: white;
+  color: var(--blue);
+  box-shadow: 0 1px 5px #00000012;
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 14px;
+  margin-bottom: 22px;
+}
+.stat {
+  padding: 18px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.stat-label {
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 7px;
+}
+.stat-value {
+  font-size: clamp(18px,2.5vw,26px);
+  font-weight: 750;
+  letter-spacing: -.5px;
+}
+.progress {
+  background: #e9eef6;
+  height: 12px;
+  border-radius: 20px;
+  overflow: hidden;
+}
+.progress-fill {
+  background: var(--blue);
+  width: 0%;
+  height: 100%;
+  border-radius: 20px;
+  transition: width .2s ease;
+}
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 9px;
+}
+.encounter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 130px 40px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.encounter input { min-width: 0; }
+button { cursor: pointer; }
+.remove {
+  background: #fff;
+  border: 1px solid var(--border);
+  color: var(--red);
+  border-radius: 9px;
+  height: 43px;
+  font-size: 21px;
+}
+.remove:hover { background: #fef2f2; }
+.add-form {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) 130px auto;
+  gap: 10px;
+  margin-top: 18px;
+}
+.primary {
+  border: none;
+  background: var(--blue);
+  color: white;
+  border-radius: 9px;
+  font-weight: 600;
+  padding: 11px 18px;
+}
+.primary:hover { background: #1d4ed8; }
+.secondary {
+  padding: 11px 18px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  font-weight: 600;
+  color: var(--text);
+}
+.secondary:hover { background: var(--bg); }
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 22px;
+  flex-wrap: wrap;
+}
+.warning {
+  color: var(--red);
+  font-size: 14px;
+  margin-top: 16px;
+}
+.empty {
+  color: var(--muted);
+  padding: 18px;
+  background: var(--bg);
+  border-radius: 10px;
+  font-size: 14px;
+}
+.explanation {
+  color: var(--muted);
+  font-size: 14px;
+}
+.explanation p { margin: 0 0 12px; }
+.explanation p:last-child { margin: 0; }
+footer {
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 16px 0 30px;
+}
+@media(max-width:650px) {
+  .container { margin: 24px auto; }
+  .card { padding: 20px; }
+  .grid, .stats { grid-template-columns: 1fr; }
+  .add-form { grid-template-columns: 1fr 105px; }
+  .add-form button { grid-column: 1 / -1; }
+  .encounter { grid-template-columns: minmax(0,1fr) 95px 40px; }
+}
+</style>
+</head>
+
+<body>
+<main class="container">
+  <header>
+    <h1>D&D Adventuring Day XP Calculator</h1>
+    <p class="subtitle">
+      Plan encounters, manage resources and balance
+      adventuring days for Dungeons & Dragons 2024 (5.5e).
+    </p>
+  </header>
+
+  <section class="card">
+    <h2>Party Configuration</h2>
+
+    <div class="grid">
+      <div class="field">
+        <label for="level">Character Level</label>
+        <div class="slider-wrap">
+          <input id="level" type="range" min="1" max="20" value="5">
+          <div class="slider-value-row">
+            <span class="slider-value" id="levelValue">5</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="partySize">Number of Characters</label>
+        <input id="partySize" type="number"
+          min="1" max="20" value="4">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Adventuring Day Difficulty</label>
+      <div class="segmented" id="difficultyButtons">
+        <button type="button" data-difficulty="easy">Easy</button>
+        <button type="button" data-difficulty="medium"
+          class="active">Medium</button>
+        <button type="button" data-difficulty="hard">Hard</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="rests">Number of Short Rests</label>
+      <div class="slider-wrap">
+        <input id="rests" type="range"
+          min="1" max="10" value="2">
+        <div class="slider-value-row">
+          <span class="slider-value" id="restsValue">2</span>
+        </div>
+      </div>
+      <div class="rest-note" id="restModifier">
+        XP Budget Modifier: x1.00
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Daily XP Budget</h2>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-label">Total XP Budget</div>
+        <div class="stat-value" id="totalBudget">0 XP</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">XP Used</div>
+        <div class="stat-value" id="usedBudget">0 XP</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">XP Remaining</div>
+        <div class="stat-value" id="remainingBudget">0 XP</div>
+      </div>
+    </div>
+
+    <div class="progress">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+
+    <div class="progress-info">
+      <span>Daily budget used</span>
+      <span id="progressPercent">0%</span>
+    </div>
+
+    <div class="warning" id="warning" hidden></div>
+  </section>
+
+  <section class="card">
+    <h2>Combat Encounters</h2>
+
+    <div id="encounterList"></div>
+
+    <form id="encounterForm" class="add-form">
+      <input type="text" id="newName"
+        placeholder="Encounter name"
+        aria-label="New encounter name">
+
+      <input type="number" id="newXp"
+        placeholder="XP" min="1" required
+        aria-label="Encounter XP">
+
+      <button class="primary" type="submit">
+        Add Encounter
+      </button>
+    </form>
+
+    <div class="actions">
+      <button class="secondary" id="copyButton" type="button">
+        Copy Plan
+      </button>
+      <button class="secondary" id="resetButton" type="button">
+        Reset Encounters
+      </button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>How It Works</h2>
+    <div class="explanation">
+      <p>
+        This calculator estimates the total combat XP budget
+        a party can handle between two long rests.
+      </p>
+      <p>
+        Daily budgets are based on the moderate encounter XP
+        thresholds from D&D 2024. Easy adventuring days use
+        two moderate encounter budgets, Medium days use three,
+        and Hard days use four.
+      </p>
+      <p>
+        Short rests adjust the daily budget. One short rest
+        applies a 0.90 multiplier, two use 1.00, three use
+        1.10, and four or more use 1.15.
+      </p>
+      <p>
+        Add encounters to subtract their XP values from the
+        available budget. You can rename encounters or edit
+        their XP at any time.
+      </p>
+      <p>
+        This is an unofficial homebrew planning tool.
+        Actual encounter difficulty depends on party
+        composition, tactics, monster abilities and available
+        resources. Daily XP budgets do not replace individual
+        encounter difficulty guidelines.
+      </p>
+    </div>
+  </section>
+
+  <footer>
+    Unofficial D&D 2024 encounter planning tool.
+    Not affiliated with Wizards of the Coast.
+  </footer>
+</main>
+
+<script>
+"use strict";
+
+// Moderate encounter XP thresholds per character,
+// indexed by character level 1 through 20.
+const moderateXP = [
+  75, 150, 225, 375, 750,
+  1000, 1300, 1700, 2000, 2300,
+  2900, 3700, 4200, 4900, 5400,
+  6100, 7200, 8700, 10700, 13200
+];
+
+const STORAGE_KEY = "dnd-adventuring-day-modern-v1";
+
+const $ = id => document.getElementById(id);
+
+const state = {
+  level: 5,
+  partySize: 4,
+  difficulty: "medium",
+  rests: 2,
+  encounters: []
+};
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function validNumber(value, fallback, min, max) {
+  const n = Number(value);
+  return Number.isFinite(n)
+    ? clamp(Math.round(n), min, max)
+    : fallback;
+}
+
+function loadState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (!saved || typeof saved !== "object") return;
+
+    state.level = validNumber(saved.level, 5, 1, 20);
+    state.partySize = validNumber(saved.partySize, 4, 1, 20);
+    state.rests = validNumber(saved.rests, 2, 1, 10);
+
+    if (["easy", "medium", "hard"].includes(saved.difficulty)) {
+      state.difficulty = saved.difficulty;
+    }
+
+    if (Array.isArray(saved.encounters)) {
+      state.encounters = saved.encounters.slice(0, 100).map(
+        (enc, i) => ({
+          name: String(enc.name ?? `Encounter ${i + 1}`).slice(0, 100),
+          xp: validNumber(enc.xp, 0, 0, 10000000)
+        })
+      );
+    }
+  } catch (error) {
+    console.warn("Saved data could not be loaded.", error);
+  }
+}
+
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (error) {
+    console.warn("Could not save plan.", error);
+  }
+}
+
+function restMultiplier(rests) {
+  if (rests === 1) return 0.90;
+  if (rests === 2) return 1.00;
+  if (rests === 3) return 1.10;
+  return 1.15;
+}
+
+function difficultyMultiplier(difficulty) {
+  if (difficulty === "easy") return 2;
+  if (difficulty === "hard") return 4;
+  return 3;
+}
+
+function formatXP(value) {
+  return Math.round(value).toLocaleString("en-US") + " XP";
+}
+
+function calculateBudget() {
+  const base = moderateXP[state.level - 1];
+  const total = base
+    * state.partySize
+    * difficultyMultiplier(state.difficulty)
+    * restMultiplier(state.rests);
+
+  return Math.round(total / 5) * 5;
+}
+
+function positionSliderValue(slider, element) {
+  const min = Number(slider.min);
+  const max = Number(slider.max);
+  const value = Number(slider.value);
+  const percent = (value - min) / (max - min);
+
+  // Compensate for the width of the slider thumb.
+  element.style.left = `calc(
+    ${percent * 100}% + ${(0.5 - percent) * 16}px
+  )`;
+}
+
+function updateSliders() {
+  const level = $("level");
+  const rests = $("rests");
+
+  level.value = state.level;
+  rests.value = state.rests;
+
+  $("levelValue").textContent = state.level;
+  $("restsValue").textContent = state.rests;
+
+  $("restModifier").textContent =
+    "XP Budget Modifier: x" +
+    restMultiplier(state.rests).toFixed(2);
+
+  positionSliderValue(level, $("levelValue"));
+  positionSliderValue(rests, $("restsValue"));
+}
+
+function updateDifficulty() {
+  document.querySelectorAll("[data-difficulty]").forEach(
+    button => {
+      const isActive =
+        button.dataset.difficulty === state.difficulty;
+      button.classList.toggle("active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    }
+  );
+}
+
+function updateBudget() {
+  const total = calculateBudget();
+  const used = state.encounters.reduce(
+    (sum, encounter) => sum + encounter.xp, 0
+  );
+  const remaining = total - used;
+  const percent = total > 0
+    ? Math.round(used / total * 100)
+    : 0;
+
+  $("totalBudget").textContent = formatXP(total);
+  $("usedBudget").textContent = formatXP(used);
+  $("remainingBudget").textContent = formatXP(remaining);
+  $("remainingBudget").style.color =
+    remaining < 0 ? "var(--red)" : "var(--text)";
+
+  $("progressFill").style.width =
+    Math.min(percent, 100) + "%";
+  $("progressFill").style.background =
+    used > total ? "var(--red)" : "var(--blue)";
+  $("progressPercent").textContent = percent + "%";
+
+  const warning = $("warning");
+  warning.hidden = used <= total;
+
+  if (used > total) {
+    warning.textContent =
+      "Your encounters exceed the daily XP budget by " +
+      formatXP(used - total) +
+      ". Consider reducing encounter difficulty.";
+  }
+}
+
+function createInput(type, value, label) {
+  const input = document.createElement("input");
+  input.type = type;
+  input.value = value;
+  input.setAttribute("aria-label", label);
+  return input;
+}
+
+function renderEncounters() {
+  const list = $("encounterList");
+  list.replaceChildren();
+
+  if (state.encounters.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent =
+      "No encounters yet. Add your first encounter below.";
+    list.appendChild(empty);
+    return;
+  }
+
+  state.encounters.forEach((encounter, index) => {
+    const row = document.createElement("div");
+    row.className = "encounter";
+
+    const nameInput = createInput(
+      "text", encounter.name, "Encounter name"
+    );
+    nameInput.maxLength = 100;
+    nameInput.placeholder = `Encounter ${index + 1}`;
+
+    nameInput.addEventListener("input", () => {
+      state.encounters[index].name = nameInput.value;
+      saveState();
+    });
+
+    const xpInput = createInput(
+      "number", encounter.xp, "Encounter XP"
+    );
+    xpInput.min = 0;
+    xpInput.max = 10000000;
+    xpInput.addEventListener("input", () => {
+      state.encounters[index].xp =
+        validNumber(xpInput.value, 0, 0, 10000000);
+      updateBudget();
+      saveState();
+    });
+
+    const removeButton = document.createElement("button");
+    removeButton.className = "remove";
+    removeButton.type = "button";
+    removeButton.textContent = "×";
+    removeButton.setAttribute(
+      "aria-label", "Remove " + encounter.name
+    );
+    removeButton.addEventListener("click", () => {
+      state.encounters.splice(index, 1);
+      renderEncounters();
+      updateBudget();
+      saveState();
+    });
+
+    row.append(nameInput, xpInput, removeButton);
+    list.appendChild(row);
+  });
+}
+
+function updateAll() {
+  $("partySize").value = state.partySize;
+  updateSliders();
+  updateDifficulty();
+  updateBudget();
+}
+
+$("level").addEventListener("input", event => {
+  state.level = Number(event.target.value);
+  updateAll();
+  saveState();
+});
+
+$("rests").addEventListener("input", event => {
+  state.rests = Number(event.target.value);
+  updateAll();
+  saveState();
+});
+
+$("partySize").addEventListener("change", event => {
+  state.partySize = validNumber(event.target.value, 4, 1, 20);
+  updateAll();
+  saveState();
+});
+
+document.querySelectorAll("[data-difficulty]").forEach(
+  button => {
+    button.addEventListener("click", () => {
+      state.difficulty = button.dataset.difficulty;
+      updateAll();
+      saveState();
+    });
+  }
+);
+
+$("encounterForm").addEventListener("submit", event => {
+  event.preventDefault();
+
+  const xp = Number($("newXp").value);
+  if (!Number.isFinite(xp) || xp <= 0) return;
+
+  const name = $("newName").value.trim() ||
+    `Encounter ${state.encounters.length + 1}`;
+
+  state.encounters.push({
+    name: name.slice(0, 100),
+    xp: validNumber(xp, 1, 1, 10000000)
+  });
+
+  $("newName").value = "";
+  $("newXp").value = "";
+
+  renderEncounters();
+  updateBudget();
+  saveState();
+});
+
+$("resetButton").addEventListener("click", () => {
+  if (!confirm("Remove all encounters?")) return;
+
+  state.encounters = [];
+  renderEncounters();
+  updateBudget();
+  saveState();
+});
+
+$("copyButton").addEventListener("click", async () => {
+  const budget = calculateBudget();
+  const used = state.encounters.reduce(
+    (sum, enc) => sum + enc.xp, 0
+  );
+
+  const lines = [
+    "D&D Adventuring Day XP Plan",
+    "",
+    `Character Level: ${state.level}`,
+    `Party Size: ${state.partySize}`,
+    `Difficulty: ${state.difficulty}`,
+    `Short Rests: ${state.rests}`,
+    `Short Rest Modifier: x${restMultiplier(state.rests).toFixed(2)}`,
+    "",
+    `Daily XP Budget: ${formatXP(budget)}`,
+    "",
+    "Encounters:",
+    ...state.encounters.map(
+      (enc, index) =>
+        `${index + 1}. ${enc.name || "Unnamed Encounter"} - ${formatXP(enc.xp)}`
+    ),
+    "",
+    `XP Used: ${formatXP(used)}`,
+    `XP Remaining: ${formatXP(budget - used)}`
+  ];
+
+  const text = lines.join("\n");
+
+  try {
+    await navigator.clipboard.writeText(text);
+    $("copyButton").textContent = "Copied!";
+    setTimeout(() => {
+      $("copyButton").textContent = "Copy Plan";
+    }, 1800);
+  } catch (error) {
+    const area = document.createElement("textarea");
+    area.value = text;
+    document.body.appendChild(area);
+    area.select();
+    document.execCommand("copy");
+    area.remove();
+    $("copyButton").textContent = "Plan Copied";
+    setTimeout(() => {
+      $("copyButton").textContent = "Copy Plan";
+    }, 1800);
+  }
+});
+
+loadState();
+renderEncounters();
+updateAll();
+</script>
+</body>
+</html>
